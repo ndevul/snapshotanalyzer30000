@@ -17,3 +17,5 @@ Create a profile "shotty" to maintain the instance snapshots using AWS CLI
 'pipenv run python shotty/shotty.py <command>'
 
 ## Command = list, start, stop, terminate
+
+## Added code to create snapshot
