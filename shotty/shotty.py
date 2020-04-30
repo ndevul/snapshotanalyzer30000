@@ -1,5 +1,8 @@
 import boto3
+import botocore
 import click
+
+## botocore is for exception handling
 
 session = boto3.Session(profile_name = 'admin')
 ec2 = session.resource('ec2')
@@ -35,12 +38,6 @@ def list_snapshots(project):
 
     instances = filter_instances(project)
 
-    if project:
-        filters = [{'Name':'tag:Project', 'Values':["project"]}]
-        instances = ec2.instances.filter(Filters = filters)
-    else:
-        instances = ec2.instances.all()
-
     for i in instances:
         for v in i.volumes.all():
             for s in v.snapshots.all():
@@ -48,8 +45,11 @@ def list_snapshots(project):
                     s.id,
                     s.volume_id,
                     str(s.volume_size) + "GiB",
-                    s.snapshot_id
+                    s.snapshot_id,
+                    s.state
                 )))
+
+                if s.state == 'completed':break
     return
 ## Add a group for commands for volumes and give it a Name
 
@@ -65,12 +65,6 @@ def list_volumes(project):
     "List Volumes"
 
     instances = filter_instances(project)
-
-    if project:
-        filters = [{'Name':'tag:Project', 'Values':["project"]}]
-        instances = ec2.instances.filter(Filters = filters)
-    else:
-        instances = ec2.instances.all()
 
     for i in instances:
         for v in i.volumes.all():
@@ -90,7 +84,7 @@ def list_volumes(project):
 def instances():
     """ commands for instances """
 
-@instances.command('Snapshot',
+@instances.command('snapshot',
         help="Create snapshots for all volumes")
 @click.option('--project', default=None,
      help="Only instances for project (tag project:<name>)")
@@ -100,8 +94,13 @@ def create_snapshots(project):
 
     for i in instances:
         for v in i.volumes.all():
+            i.stop()
+            i.wait_until_stopped()
             print("Creating snapshot of {0}".format(v.id))
-            v,create_snapshot(Description="Created by shotty")
+            v.create_snapshot(Description="Created by shotty")
+            print("Starting...{0}".format(i.id))
+            i.start()
+            i.wait_until_running()
     return
 
 
@@ -143,21 +142,32 @@ def start_instances(project):
 
     for i in instances:
         print("Starting {}...".format(i.id))
-        i.start()
+        try:
+            i.start()
+        except botocore.exceptions.ClientError as e:      ##handle error when start comand us issued on a
+                                                          ## stopping instance
+            print("Could not start {0} ".format(i.id) + str(e))
+            continue
+
     return
 
 @instances.command('stop')
 @click.option('--project', default = None,
     help="Only instances for project (tag project:<name>)")
 
-def stop_instance(project):
+def stop_instance(project):# XXX: # XXX:
     "Stop EC2 instances"
 
     instances = filter_instances(project)
 
     for i in instances:
         print("Stopping {}...".format(i.id))
-        i.stop()
+        try:
+            i.stop()
+        except botocore.exceptions.ClientError as e:      ##handle error when start comand us issued on a
+                                                          ## stopping instance
+            print("Could not stop {0} ".format(i.id) + str(e))
+            continue
     return
 
 @instances.command('terminate')
